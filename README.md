@@ -164,10 +164,10 @@ LimitNOFILE=1000000
 [Manager]
 DefaultLimitNOFILE=1000000
 ```
-### Disbale swap 
+### Disable swap 
 Swap can negatively affect validator performance.
 
-1. Disbale swap
+1. Turn off swap
 ```bash 
 sudo swapoff -a #disables swap
 sudo rm /swapfile #removes swap file
