@@ -13,8 +13,24 @@ Three or more disks are required with the following configuration:
 
 Base OS: Ubuntu 22.04
 
-## Disk Setup
+# 1. Initial Setup
 
+## Update & Upgrade the System
+
+Ensure your system is up to date with the latest security patches and packages.
+
+```bash
+sudo apt update && sudo apt upgrade
+```
+
+## Check Disk Mount Status
+Before proceeding, verify that your disks are properly recognized and mounted:
+```bash
+df -h           # View mounted filesystems and usage
+lsblk -f        # Display block devices and mount points
+```
+
+## Disk Setup
 Directory structure:
 - Ledger Disk → `/mnt/ledger`
 - Account & Snapshot Disk → `/mnt/extras`
@@ -23,19 +39,40 @@ Directory structure:
 
 ### Setup Steps
 
-1. Format the block
+1. create sol user
 ```bash
-sudo mkfs -t ext4 /dev/nvme0n1
+sudo adduser sol
 ```
 
-2. Spin up directory + give sol user permission
+2. Format the blocks
+```bash
+sudo mkfs -t ext4 /dev/nvme0n1
+sudo mkfs -t ext4 /dev/nvme1n1
+```
+
+3. Create directories
+```bash
+sudo mkdir -p /mnt/ledger /mnt/extras/snapshot /mnt/extras/accounts
+```
+
+4. Spin up directory + give sol user permission
 ```bash
 sudo chown -R sol:sol <PATH TO DIR>
 ```
 
-3. Mount to the directory
+5. Mount to the directory
 ```bash
 sudo mount /dev/nvme0n1 <PATH TO DIR>
+```
+
+6. Add the UUIDs of the disks to the fstab file to retain the mount points after reboots:
+```bash
+sudo nano /etc/fstab
+
+#add the following lines to the fstab file
+UUID="COPY THE UUID FROM THE OUTPUT OF lsblk -f" /mnt/ledger ext4 defaults 0 0
+UUID="COPY THE UUID FROM THE OUTPUT OF lsblk -f" /mnt/extras/snapshot ext4 defaults 0 0
+UUID="COPY THE UUID FROM THE OUTPUT OF lsblk -f" /mnt/extras/accounts ext4 defaults 0 0
 ```
 
 ## Ports Opening
@@ -43,7 +80,7 @@ sudo mount /dev/nvme0n1 <PATH TO DIR>
 Note: RPC port remains closed, only SSH and gossip ports are opened.
 
 For new machines with UFW disabled:
-1. Add OpenSSH first to prevent lockout if you don't have password access
+1. Add OpenSSH first to prevent lockout if you don't have password access: ```sudo ufw allow OpenSSH```
 2. Open required ports:
 ```bash
 sudo ufw allow 8000:8020/tcp
@@ -53,7 +90,7 @@ sudo ufw allow 8000:8020/udp
 ```
 
 
-# System Tuning and Validator Setup
+# 2. System Tuning for best performance
 
 ## System Performance Optimization
 
@@ -127,8 +164,41 @@ LimitNOFILE=1000000
 [Manager]
 DefaultLimitNOFILE=1000000
 ```
+### Disbale swap 
+Swap can negatively affect validator performance.
 
-## Validator Setup
+1. Disbale swap
+```bash 
+sudo swapoff -a #disables swap
+sudo rm /swapfile #removes swap file
+```
+2. Ensure swap is disabled 
+```bash
+btop
+# or
+free -h
+``` 
+
+
+# 3. Validator Setup
+
+### Installing rust and other dependencies
+1. Install useful rust tools on the root system
+```bash 
+sudo apt-get install libssl-dev libudev-dev pkg-config zlib1g-dev llvm clang cmake make libprotobuf-dev protobuf-compiler
+```
+2. Switch to the sol user
+```bash
+sudo su - sol
+```
+
+3. Install rust on the sol user
+```bash
+curl https://sh.rustup.rs -sSf | sh
+source $HOME/.cargo/env
+rustup component add rustfmt
+rustup update
+```
 
 ### Installing Agave/Jito Client
 
