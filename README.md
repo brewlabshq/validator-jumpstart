@@ -202,24 +202,38 @@ rustup update
 
 ### Installing Agave/Jito Client
 
-1. Grant execution permissions to the install script:
+1. Clone the Agave/Jito client repository:
 ```bash
-chmod +x bin/ice-staking/start/init.sh
+git clone https://github.com/jito-foundation/jito-solana.git --recurse-submodules
 ```
-
-2. Run the installation with specific version tag:
+2. Navigate to the jito/agave directory
 ```bash
-bin/ice-staking/start/init.sh -t v1.18.23-jito
+cd ice-staking
+```
+3. Git checkout to the version you want to user and install submodules, eg: v2.2.14-jito
+```bash sol
+git checkout tags/$VERSION
+git submodule update --init --recursive
+
+CI_COMMIT=$(git rev-parse HEAD) scripts/cargo-install-all.sh --validator-only ~/.local/share/solana/install/releases/"$VERSION"
 ```
 
 ### Post-Installation Setup
 
 1. Create symlink for Jito client (if used):
 ```bash
-ln -sf /home/sol/.local/share/solana/install/releases/v1.18.15-jito/bin /home/sol/.local/share/solana/install/active_release/
+ln -sf /home/sol/.local/share/solana/install/releases/$VERSION/bin /home/sol/.local/share/solana/install/active_release/
 ```
 
-2. Add the following to your `.bashrc` or `.bash_profile`:
+2. Grant execution permissions to the install script:
+```bash
+chmod +x bin/start.sh
+```
+
+3. Add the start script to this file, Use the start script [here](https://github.com/dhruvsol/ice-staking/blob/main/start/start.sh), specifically configured for a voting validator node. Note that the configuration includes modifications to support RPC functionality.
+additional flag for RPC node [here](https://docs.anza.xyz/operations/setup-an-rpc-node)
+
+3. Add the following to your `.bashrc` or `.bash_profile`:
 ```bash
 # Environment Setup
 . "$HOME/.cargo/env"
@@ -230,14 +244,88 @@ alias catchup='solana catchup --our-localhost'
 alias monitor='solana-validator --ledger /mnt/ledger monitor'
 alias logtail='tail -f /home/sol/solana-validator.log'
 ```
-3. Start script
-Use the start script [here](https://github.com/dhruvsol/ice-staking/blob/main/start/start.sh), specifically configured for a voting validator node. Note that the configuration includes modifications to support RPC functionality.
-additional flag for RPC node [here](https://docs.anza.xyz/operations/setup-an-rpc-node)
-
 
 ### Additional Resources
 - Installation script source: [ice-staking repository](https://github.com/dhruvsol/ice-staking)
 
+
+# 4. Service Management
+## Solana validator service
+Create a systemd service file for the Solana validator:
+
+```ini
+[Unit]
+Description=Solana Validator
+After=network.target
+StartLimitIntervalSec=0
+
+[Service]
+Type=simple
+Restart=always
+RestartSec=1
+User=sol
+LimitNOFILE=1000000
+LogRateLimitIntervalSec=0
+Environment="SOLANA_METRICS_CONFIG=host=https://metrics.solana.com:8086,db=mainnet-beta,u=mainnet-beta_write,p=password"
+Environment="PATH=/home/sol/bin:/home/sol/.local/share/solana/install/active_release/bin:/home/sol/.cargo/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/usr/games:/usr/local/games:/snap/bin"
+ExecStart=/home/sol/bin/ice-staking/start/start.sh mainnet-beta
+
+[Install]
+WantedBy=multi-user.target
+```
+
+## Service Management Commands
+
+### Start Service
+```bash
+sudo systemctl enable --now sol
+```
+
+### Stop Service
+```bash
+sudo systemctl stop sol
+```
+
+### Restart Service
+```bash
+sudo systemctl restart sol
+```
+
+# 5. Monitoring Setup (optional)
+
+We'll be using arise monitoring service for tracking uptime and incident reporting
+
+1. Clone the github repo 
+```bash 
+https://github.com/brewlabshq/arise-status.git
+```
+
+2. Checkout to the latest release
+```bash
+git checkout tags/v0.1.0    #replace with the latest version
+```
+
+3. Setup the .env file
+```bash
+cp .env.example .env
+nano .env
+```
+
+4. Update the .env file with the arise heartbeat url and name
+```bash
+PING_URL="https://arise-heartbeat-url"
+SERVICE_NAME="My validator Mainnet"
+```
+
+3. Build and run
+```bash 
+cargo build -r 
+cargor run -r
+```
+
+After successful setup you can see a log "RPC Alive, status posted successfully".
+
+We'll be creating the service for arise monitoring so that the monitoring stays alive even if the system reboots
 
 # Hot-Swap Validator Setup Guide
 
@@ -280,48 +368,6 @@ EOF
 
 sudo cp logrotate.sol /etc/logrotate.d/sol
 systemctl restart logrotate.service
-```
-
-## Systemd Service Configuration
-
-Create a systemd service file for the Solana validator:
-
-```ini
-[Unit]
-Description=Solana Validator
-After=network.target
-StartLimitIntervalSec=0
-
-[Service]
-Type=simple
-Restart=always
-RestartSec=1
-User=sol
-LimitNOFILE=1000000
-LogRateLimitIntervalSec=0
-Environment="SOLANA_METRICS_CONFIG=host=https://metrics.solana.com:8086,db=mainnet-beta,u=mainnet-beta_write,p=password"
-Environment="PATH=/home/sol/bin:/home/sol/.local/share/solana/install/active_release/bin:/home/sol/.cargo/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/usr/games:/usr/local/games:/snap/bin"
-ExecStart=/home/sol/bin/ice-staking/start/start.sh mainnet-beta
-
-[Install]
-WantedBy=multi-user.target
-```
-
-## Service Management Commands
-
-### Start Service
-```bash
-sudo systemctl enable --now sol
-```
-
-### Stop Service
-```bash
-sudo systemctl stop sol
-```
-
-### Restart Service
-```bash
-sudo systemctl restart sol
 ```
   
 After this check the log file snapshot download should have started
