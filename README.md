@@ -208,7 +208,7 @@ git clone https://github.com/jito-foundation/jito-solana.git --recurse-submodule
 ```
 2. Navigate to the jito/agave directory
 ```bash
-cd ice-staking
+cd jito-solana
 ```
 3. Git checkout to the version you want to user and install submodules, eg: v2.2.14-jito
 ```bash sol
@@ -222,7 +222,7 @@ CI_COMMIT=$(git rev-parse HEAD) scripts/cargo-install-all.sh --validator-only ~/
 
 1. Create symlink for Jito client (if used):
 ```bash
-ln -sf /home/sol/.local/share/solana/install/releases/$VERSION/bin /home/sol/.local/share/solana/install/active_release/
+ln -sf /home/sol/.local/share/solana/install/releases/$VERSION/bin/ /home/sol/.local/share/solana/install/active_release/
 ```
 
 2. Grant execution permissions to the install script:
@@ -241,8 +241,8 @@ export PATH="/home/sol/.local/share/solana/install/active_release/bin:$PATH"
 
 # Helpful Aliases
 alias catchup='solana catchup --our-localhost'
-alias monitor='solana-validator --ledger /mnt/ledger monitor'
-alias logtail='tail -f /home/sol/solana-validator.log'
+alias monitor='agave-validator --ledger /mnt/ledger monitor'
+alias logtail='tail -f /home/logs/sol/solana-validator.log'
 ```
 
 ### Additional Resources
@@ -293,9 +293,9 @@ sudo systemctl restart sol
 
 # 5. Monitoring Setup (optional)
 
-We'll be using arise monitoring service for tracking uptime and incident reporting
+We'll be using [Betterstack Heartbeat](https://betterstack.com/uptime) for tracking uptime and incident reporting. Create a new Heartbeat and copy its url,
 
-1. Clone the github repo 
+1. Clone the github repo
 ```bash 
 https://github.com/brewlabshq/arise-status.git
 ```
@@ -327,6 +327,39 @@ After successful setup you can see a log "RPC Alive, status posted successfully"
 
 We'll be creating the service for arise monitoring so that the monitoring stays alive even if the system reboots
 
+### Arise monitoring service
+
+1. Create a new service file for arise
+```bash 
+[Unit]
+Description=Arise Heartbeat
+After=network.target
+StartLimitIntervalSec=0
+
+
+[Service]
+Type=simple
+Restart=always
+RestartSec=1
+User=sol
+LogRateLimitIntervalSec=0
+Environment="PATH=/home/sol/.cargo/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin"
+ExecStart=/home/sol/arise-status/start.sh
+
+
+[Install]
+WantedBy=multi-user.target
+```
+
+2. Enable the service 
+```bash 
+sudo systemctl enable arise --now 
+```
+3. Confirm the service is running successfully 
+```bash 
+sudo systemctl status arise 
+```
+
 # Hot-Swap Validator Setup Guide
 
 ## Overview
@@ -352,11 +385,11 @@ scp <source_files> ice-ams:
 
 ## Log Rotation Configuration
 
-Create and implement log rotation for validator logs:
+1. Create and implement log rotation for validator logs:
 
 ```bash
 cat > logrotate.sol <<EOF
-/home/sol/solana-validator.log {
+/home/sol/logs/solana-validator.log {
     rotate 7
     daily
     missingok
@@ -369,11 +402,28 @@ EOF
 sudo cp logrotate.sol /etc/logrotate.d/sol
 systemctl restart logrotate.service
 ```
+2. Create and implement log rotation for Arise Monitoring logs:
+
+```bash
+cat > logrotate.sol <<EOF
+/home/sol/arise-output.log {
+    rotate 7
+    hourly
+    missingok
+    postrotate
+        systemctl kill -s USR1 arise.service
+    endscript
+}
+EOF
+
+sudo cp logrotate.arise /etc/logrotate.d/arise
+systemctl restart logrotate.service
+```
   
 After this check the log file snapshot download should have started
 
-```
-tail -f solana-validator.log 
+```bash
+logtail #custom alias for tail -f logs/solana-validator.logs
 ```
 
 # Solana Validator Operations Guide
