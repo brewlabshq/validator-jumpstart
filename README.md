@@ -222,7 +222,7 @@ CI_COMMIT=$(git rev-parse HEAD) scripts/cargo-install-all.sh --validator-only ~/
 
 1. Create symlink for Jito client (if used):
 ```bash
-ln -sf /home/sol/.local/share/solana/install/releases/$VERSION/bin/ /home/sol/.local/share/solana/install/active_release/
+ln -sf /home/sol/.local/share/solana/install/releases/$VERSION/bin /home/sol/.local/share/solana/install/active_release
 ```
 
 2. Grant execution permissions to the install script:
@@ -242,7 +242,7 @@ export PATH="/home/sol/.local/share/solana/install/active_release/bin:$PATH"
 # Helpful Aliases
 alias catchup='solana catchup --our-localhost'
 alias monitor='agave-validator --ledger /mnt/ledger monitor'
-alias logtail='tail -f /home/logs/sol/solana-validator.log'
+alias logtail='tail -f /home/sol/logs/solana-validator.log'
 ```
 
 ### Additional Resources
@@ -297,7 +297,7 @@ We'll be using [Betterstack Heartbeat](https://betterstack.com/uptime) for track
 
 1. Clone the github repo
 ```bash 
-https://github.com/brewlabshq/arise-status.git
+git clone https://github.com/brewlabshq/arise-status.git
 ```
 
 2. Checkout to the latest release
@@ -405,7 +405,7 @@ systemctl restart logrotate.service
 2. Create and implement log rotation for Arise Monitoring logs:
 
 ```bash
-cat > logrotate.sol <<EOF
+cat > logrotate.arise <<EOF
 /home/sol/arise-output.log {
     rotate 7
     hourly
