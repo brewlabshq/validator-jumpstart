@@ -13,8 +13,24 @@ Three or more disks are required with the following configuration:
 
 Base OS: Ubuntu 22.04
 
-## Disk Setup
+# 1. Initial Setup
 
+## Update & Upgrade the System
+
+Ensure your system is up to date with the latest security patches and packages.
+
+```bash
+sudo apt update && sudo apt upgrade
+```
+
+## Check Disk Mount Status
+Before proceeding, verify that your disks are properly recognized and mounted:
+```bash
+df -h           # View mounted filesystems and usage
+lsblk -f        # Display block devices and mount points
+```
+
+## Disk Setup
 Directory structure:
 - Ledger Disk → `/mnt/ledger`
 - Account & Snapshot Disk → `/mnt/extras`
@@ -23,19 +39,40 @@ Directory structure:
 
 ### Setup Steps
 
-1. Format the block
+1. create sol user
 ```bash
-sudo mkfs -t ext4 /dev/nvme0n1
+sudo adduser sol
 ```
 
-2. Spin up directory + give sol user permission
+2. Format the blocks
+```bash
+sudo mkfs -t ext4 /dev/nvme0n1
+sudo mkfs -t ext4 /dev/nvme1n1
+```
+
+3. Create directories
+```bash
+sudo mkdir -p /mnt/ledger /mnt/extras/snapshot /mnt/extras/accounts
+```
+
+4. Spin up directory + give sol user permission
 ```bash
 sudo chown -R sol:sol <PATH TO DIR>
 ```
 
-3. Mount to the directory
+5. Mount to the directory
 ```bash
 sudo mount /dev/nvme0n1 <PATH TO DIR>
+```
+
+6. Add the UUIDs of the disks to the fstab file to retain the mount points after reboots:
+```bash
+sudo nano /etc/fstab
+
+#add the following lines to the fstab file
+UUID="COPY THE UUID FROM THE OUTPUT OF lsblk -f" /mnt/ledger ext4 defaults 0 0
+UUID="COPY THE UUID FROM THE OUTPUT OF lsblk -f" /mnt/extras/snapshot ext4 defaults 0 0
+UUID="COPY THE UUID FROM THE OUTPUT OF lsblk -f" /mnt/extras/accounts ext4 defaults 0 0
 ```
 
 ## Ports Opening
@@ -43,7 +80,7 @@ sudo mount /dev/nvme0n1 <PATH TO DIR>
 Note: RPC port remains closed, only SSH and gossip ports are opened.
 
 For new machines with UFW disabled:
-1. Add OpenSSH first to prevent lockout if you don't have password access
+1. Add OpenSSH first to prevent lockout if you don't have password access: ```sudo ufw allow OpenSSH```
 2. Open required ports:
 ```bash
 sudo ufw allow 8000:8020/tcp
@@ -53,7 +90,7 @@ sudo ufw allow 8000:8020/udp
 ```
 
 
-# System Tuning and Validator Setup
+# 2. System Tuning for best performance
 
 ## System Performance Optimization
 
@@ -127,29 +164,76 @@ LimitNOFILE=1000000
 [Manager]
 DefaultLimitNOFILE=1000000
 ```
+### Disable swap 
+Swap can negatively affect validator performance.
 
-## Validator Setup
+1. Turn off swap
+```bash 
+sudo swapoff -a #disables swap
+sudo rm /swapfile #removes swap file
+```
+2. Ensure swap is disabled 
+```bash
+btop
+# or
+free -h
+``` 
+
+
+# 3. Validator Setup
+
+### Installing rust and other dependencies
+1. Install useful rust tools on the root system
+```bash 
+sudo apt-get install libssl-dev libudev-dev pkg-config zlib1g-dev llvm clang cmake make libprotobuf-dev protobuf-compiler
+```
+2. Switch to the sol user
+```bash
+sudo su - sol
+```
+
+3. Install rust on the sol user
+```bash
+curl https://sh.rustup.rs -sSf | sh
+source $HOME/.cargo/env
+rustup component add rustfmt
+rustup update
+```
 
 ### Installing Agave/Jito Client
 
-1. Grant execution permissions to the install script:
+1. Clone the Agave/Jito client repository:
 ```bash
-chmod +x bin/ice-staking/start/init.sh
+git clone https://github.com/jito-foundation/jito-solana.git --recurse-submodules
 ```
-
-2. Run the installation with specific version tag:
+2. Navigate to the jito/agave directory
 ```bash
-bin/ice-staking/start/init.sh -t v1.18.23-jito
+cd jito-solana
+```
+3. Git checkout to the version you want to user and install submodules, eg: v2.2.14-jito
+```bash sol
+git checkout tags/$VERSION
+git submodule update --init --recursive
+
+CI_COMMIT=$(git rev-parse HEAD) scripts/cargo-install-all.sh --validator-only ~/.local/share/solana/install/releases/"$VERSION"
 ```
 
 ### Post-Installation Setup
 
 1. Create symlink for Jito client (if used):
 ```bash
-ln -sf /home/sol/.local/share/solana/install/releases/v1.18.15-jito/bin /home/sol/.local/share/solana/install/active_release/
+ln -sf /home/sol/.local/share/solana/install/releases/$VERSION/bin /home/sol/.local/share/solana/install/active_release
 ```
 
-2. Add the following to your `.bashrc` or `.bash_profile`:
+2. Grant execution permissions to the install script:
+```bash
+chmod +x bin/start.sh
+```
+
+3. Add the start script to this file, Use the start script [here](https://github.com/dhruvsol/ice-staking/blob/main/start/start.sh), specifically configured for a voting validator node. Note that the configuration includes modifications to support RPC functionality.
+additional flag for RPC node [here](https://docs.anza.xyz/operations/setup-an-rpc-node)
+
+3. Add the following to your `.bashrc` or `.bash_profile`:
 ```bash
 # Environment Setup
 . "$HOME/.cargo/env"
@@ -157,63 +241,16 @@ export PATH="/home/sol/.local/share/solana/install/active_release/bin:$PATH"
 
 # Helpful Aliases
 alias catchup='solana catchup --our-localhost'
-alias monitor='solana-validator --ledger /mnt/ledger monitor'
-alias logtail='tail -f /home/sol/solana-validator.log'
+alias monitor='agave-validator --ledger /mnt/ledger monitor'
+alias logtail='tail -f /home/sol/logs/solana-validator.log'
 ```
-3. Start script
-Use the start script [here](https://github.com/dhruvsol/ice-staking/blob/main/start/start.sh), specifically configured for a voting validator node. Note that the configuration includes modifications to support RPC functionality.
-additional flag for RPC node [here](https://docs.anza.xyz/operations/setup-an-rpc-node)
-
 
 ### Additional Resources
 - Installation script source: [ice-staking repository](https://github.com/dhruvsol/ice-staking)
 
 
-# Hot-Swap Validator Setup Guide
-
-## Overview
-This guide describes how to set up two servers for hot-swapping to maintain 100% uptime during system changes. The process follows the [Identity Transition](https://pumpkins-pool.gitbook.io/pumpkins-pool) methodology by Pumpkin.
-
-## Identity Keypair Configuration
-
-### Required Keypairs
-1. **Unstaked Keypair** (`unstaked.json`)
-   - Functions as a burner keypair
-   - Maintains zero SOL balance to prevent voting capabilities
-
-2. **Staked Keypair** (`staked.json`)
-   - Serves as the primary staked keypair
-   - Used for validator transitions when needed
-
-### Transferring Keypairs
-Transfer the keypairs to your validator server using SCP:
-```bash
-scp <source_files> ice-ams:
-```
-> **Note**: Customize the SSH configuration according to your setup. Ensure proper permissions are set for the `sol` user after transfer.
-
-## Log Rotation Configuration
-
-Create and implement log rotation for validator logs:
-
-```bash
-cat > logrotate.sol <<EOF
-/home/sol/solana-validator.log {
-    rotate 7
-    daily
-    missingok
-    postrotate
-        systemctl kill -s USR1 sol.service
-    endscript
-}
-EOF
-
-sudo cp logrotate.sol /etc/logrotate.d/sol
-systemctl restart logrotate.service
-```
-
-## Systemd Service Configuration
-
+# 4. Service Management
+## Solana validator service
 Create a systemd service file for the Solana validator:
 
 ```ini
@@ -253,11 +290,140 @@ sudo systemctl stop sol
 ```bash
 sudo systemctl restart sol
 ```
+
+# 5. Monitoring Setup (optional)
+
+We'll be using [Betterstack Heartbeat](https://betterstack.com/uptime) for tracking uptime and incident reporting. Create a new Heartbeat and copy its url,
+
+1. Clone the github repo
+```bash 
+git clone https://github.com/brewlabshq/arise-status.git
+```
+
+2. Checkout to the latest release
+```bash
+git checkout tags/v0.1.0    #replace with the latest version
+```
+
+3. Setup the .env file
+```bash
+cp .env.example .env
+nano .env
+```
+
+4. Update the .env file with the arise heartbeat url and name
+```bash
+PING_URL="https://arise-heartbeat-url"
+SERVICE_NAME="My validator Mainnet"
+```
+
+3. Build and run
+```bash 
+cargo build -r 
+cargor run -r
+```
+
+After successful setup you can see a log "RPC Alive, status posted successfully".
+
+We'll be creating the service for arise monitoring so that the monitoring stays alive even if the system reboots
+
+### Arise monitoring service
+
+1. Create a new service file for arise
+```bash 
+[Unit]
+Description=Arise Heartbeat
+After=network.target
+StartLimitIntervalSec=0
+
+
+[Service]
+Type=simple
+Restart=always
+RestartSec=1
+User=sol
+LogRateLimitIntervalSec=0
+Environment="PATH=/home/sol/.cargo/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin"
+ExecStart=/home/sol/arise-status/start.sh
+
+
+[Install]
+WantedBy=multi-user.target
+```
+
+2. Enable the service 
+```bash 
+sudo systemctl enable arise --now 
+```
+3. Confirm the service is running successfully 
+```bash 
+sudo systemctl status arise 
+```
+
+# Hot-Swap Validator Setup Guide
+
+## Overview
+This guide describes how to set up two servers for hot-swapping to maintain 100% uptime during system changes. The process follows the [Identity Transition](https://pumpkins-pool.gitbook.io/pumpkins-pool) methodology by Pumpkin.
+
+## Identity Keypair Configuration
+
+### Required Keypairs
+1. **Unstaked Keypair** (`unstaked.json`)
+   - Functions as a burner keypair
+   - Maintains zero SOL balance to prevent voting capabilities
+
+2. **Staked Keypair** (`staked.json`)
+   - Serves as the primary staked keypair
+   - Used for validator transitions when needed
+
+### Transferring Keypairs
+Transfer the keypairs to your validator server using SCP:
+```bash
+scp <source_files> ice-ams:
+```
+> **Note**: Customize the SSH configuration according to your setup. Ensure proper permissions are set for the `sol` user after transfer.
+
+## Log Rotation Configuration
+
+1. Create and implement log rotation for validator logs:
+
+```bash
+cat > logrotate.sol <<EOF
+/home/sol/logs/solana-validator.log {
+    rotate 7
+    daily
+    missingok
+    postrotate
+        systemctl kill -s USR1 sol.service
+    endscript
+}
+EOF
+
+sudo cp logrotate.sol /etc/logrotate.d/sol
+systemctl restart logrotate.service
+```
+2. Create and implement log rotation for Arise Monitoring logs:
+
+```bash
+cat > logrotate.arise <<EOF
+/home/sol/arise-output.log {
+    rotate 7
+    hourly
+    missingok
+    postrotate
+        systemctl kill -s USR1 arise.service
+    endscript
+}
+EOF
+
+sudo cp logrotate.arise /etc/logrotate.d/arise
+systemctl restart logrotate.service
+```
   
 After this check the log file snapshot download should have started
 
-```
-tail -f solana-validator.log 
+```bash
+logtail #custom alias for tail -f logs/solana-validator.logs
 ```
 
 # Solana Validator Operations Guide
