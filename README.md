@@ -48,6 +48,9 @@ sudo adduser sol
 ```bash
 sudo mkfs -t ext4 /dev/nvme0n1
 sudo mkfs -t ext4 /dev/nvme1n1
+
+// with noatime
+sudo mount -t xfs -o defaults,noatime,logbufs=8 /dev/nvme2n1 /mnt/ledger
 ```
 
 3. Create directories
